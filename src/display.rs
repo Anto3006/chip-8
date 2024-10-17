@@ -3,7 +3,6 @@ extern crate sdl2;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::WindowCanvas;
-use std::time::Duration;
 
 const WIDTH_PIXEL_COUNT: u8 = 64;
 const HEIGHT_PIXEL_COUNT: u8 = 32;
@@ -11,7 +10,7 @@ const HEIGHT_PIXEL_COUNT: u8 = 32;
 pub struct DisplayChip8 {
     pixel_size: u32,
     pixels: [bool; (WIDTH_PIXEL_COUNT as usize) * (HEIGHT_PIXEL_COUNT as usize)],
-    canvas: WindowCanvas,
+    pub canvas: WindowCanvas,
 }
 
 impl DisplayChip8 {
@@ -79,8 +78,11 @@ impl DisplayChip8 {
             }
         }
         let _ = self.render();
-        self.canvas.present();
         did_turn_off_pixel
+    }
+
+    pub fn show(&mut self) {
+        self.canvas.present();
     }
 
     fn flip_pixel(&mut self, x_position: u8, y_position: u8) -> bool {
