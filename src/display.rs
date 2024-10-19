@@ -11,6 +11,7 @@ pub struct DisplayChip8 {
     pixel_size: u32,
     pixels: [bool; (WIDTH_PIXEL_COUNT as usize) * (HEIGHT_PIXEL_COUNT as usize)],
     pub canvas: WindowCanvas,
+    has_changed: bool,
 }
 
 impl DisplayChip8 {
@@ -31,6 +32,7 @@ impl DisplayChip8 {
             pixel_size,
             pixels: [false; (WIDTH_PIXEL_COUNT as usize) * (HEIGHT_PIXEL_COUNT as usize)],
             canvas,
+            has_changed: false,
         }
     }
 
@@ -78,11 +80,19 @@ impl DisplayChip8 {
             }
         }
         let _ = self.render();
+        self.has_changed = true;
         did_turn_off_pixel
     }
 
-    pub fn show(&mut self) {
-        self.canvas.present();
+    pub fn refresh(&mut self) {
+        if self.has_changed {
+            self.canvas.set_draw_color(Color::BLACK);
+            self.canvas.clear();
+            let __ = self.render();
+            self.canvas.present();
+        } else {
+            self.has_changed = false;
+        }
     }
 
     fn flip_pixel(&mut self, x_position: u8, y_position: u8) -> bool {

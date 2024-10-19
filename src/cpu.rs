@@ -6,9 +6,50 @@ use memory::Memory;
 use rand::{self, Rng};
 use registers::Registers;
 use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
-use sdl2::{self, sys::KeyCode};
-use std::{time::Duration, usize};
+use sdl2::keyboard::Scancode;
+use std::time::Instant;
+
+const SEC_TO_NANOS: u128 = 1_000_000_000;
+const SCANCODES_KEYS: [Scancode; 16] = [
+    Scancode::Num1,
+    Scancode::Num2,
+    Scancode::Num3,
+    Scancode::Num4,
+    Scancode::Q,
+    Scancode::W,
+    Scancode::E,
+    Scancode::R,
+    Scancode::A,
+    Scancode::S,
+    Scancode::D,
+    Scancode::F,
+    Scancode::Z,
+    Scancode::X,
+    Scancode::C,
+    Scancode::V,
+];
+
+fn get_scancode_key(scancode: Scancode) -> Option<u8> {
+    match scancode {
+        Scancode::Num1 => Some(1),
+        Scancode::Num2 => Some(2),
+        Scancode::Num3 => Some(3),
+        Scancode::Num4 => Some(0xC),
+        Scancode::Q => Some(4),
+        Scancode::W => Some(5),
+        Scancode::E => Some(6),
+        Scancode::R => Some(0xD),
+        Scancode::A => Some(7),
+        Scancode::S => Some(8),
+        Scancode::D => Some(9),
+        Scancode::F => Some(0xE),
+        Scancode::Z => Some(0xA),
+        Scancode::X => Some(0),
+        Scancode::C => Some(0xB),
+        Scancode::V => Some(0xF),
+        _ => None,
+    }
+}
 
 pub struct CPU {
     registers: Registers,
@@ -36,47 +77,41 @@ impl CPU {
     pub fn run(&mut self) {
         let sdl_context = self.display.canvas.window().subsystem().sdl();
         let mut events = sdl_context.event_pump().unwrap();
-        let loop_per_second = 60;
-        let ticks_per_refresh = 10;
+        let mut cpu_tick_acc = 0;
+        let cpu_ticks_per_second = 700;
+        let mut timer_ticks = 0;
+        let timer_ticks_per_second = 60;
+        let mut delta_time = 0;
         'gameloop: loop {
-            for _ in 0..ticks_per_refresh {
+            let begin = Instant::now();
+            cpu_tick_acc += delta_time;
+            timer_ticks += delta_time;
+            if cpu_tick_acc > (SEC_TO_NANOS / cpu_ticks_per_second) {
                 self.tick();
+                cpu_tick_acc = 0;
             }
-            self.keys = [false; 16];
+            if timer_ticks > (SEC_TO_NANOS / timer_ticks_per_second) {
+                self.tick_timers();
+                timer_ticks = 0;
+            }
+            let keyboard_state = events.keyboard_state();
+            for scancode in SCANCODES_KEYS {
+                if let Some(key) = get_scancode_key(scancode) {
+                    self.keys[key as usize] = keyboard_state.is_scancode_pressed(scancode);
+                }
+            }
             for event in events.poll_iter() {
                 match event {
                     Event::Quit { .. } => {
                         break 'gameloop;
                     }
-                    Event::KeyDown { keycode, .. } => {
-                        if let Some(keycode) = keycode {
-                            match keycode {
-                                Keycode::NUM_1 => self.keys[1] = true,
-                                Keycode::NUM_2 => self.keys[1] = true,
-                                Keycode::NUM_3 => self.keys[1] = true,
-                                Keycode::NUM_4 => self.keys[0xC] = true,
-                                Keycode::Q => self.keys[4] = true,
-                                Keycode::W => self.keys[5] = true,
-                                Keycode::E => self.keys[6] = true,
-                                Keycode::R => self.keys[0xD] = true,
-                                Keycode::A => self.keys[7] = true,
-                                Keycode::S => self.keys[8] = true,
-                                Keycode::D => self.keys[9] = true,
-                                Keycode::F => self.keys[0xE] = true,
-                                Keycode::Z => self.keys[0xA] = true,
-                                Keycode::X => self.keys[0] = true,
-                                Keycode::C => self.keys[0xB] = true,
-                                Keycode::V => self.keys[0xF] = true,
-                                _ => (),
-                            }
-                        }
-                    }
                     _ => (),
                 }
             }
-            self.tick_timers();
-            self.display.show();
-            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / loop_per_second));
+
+            self.display.refresh();
+            let end = Instant::now();
+            delta_time = end.duration_since(begin).as_nanos();
         }
     }
 
@@ -209,10 +244,8 @@ impl CPU {
                             .registers
                             .get_register(source_register as usize)
                             .unwrap();
-                        let dest_value = self
-                            .registers
-                            .get_register(source_register as usize)
-                            .unwrap();
+                        let dest_value =
+                            self.registers.get_register(dest_register as usize).unwrap();
                         let new_value = dest_value | source_value;
                         self.registers
                             .set_register(dest_register as usize, new_value);
@@ -222,10 +255,8 @@ impl CPU {
                             .registers
                             .get_register(source_register as usize)
                             .unwrap();
-                        let dest_value = self
-                            .registers
-                            .get_register(source_register as usize)
-                            .unwrap();
+                        let dest_value =
+                            self.registers.get_register(dest_register as usize).unwrap();
                         let new_value = dest_value & source_value;
                         self.registers
                             .set_register(dest_register as usize, new_value);
@@ -235,10 +266,8 @@ impl CPU {
                             .registers
                             .get_register(source_register as usize)
                             .unwrap();
-                        let dest_value = self
-                            .registers
-                            .get_register(source_register as usize)
-                            .unwrap();
+                        let dest_value =
+                            self.registers.get_register(dest_register as usize).unwrap();
                         let new_value = dest_value ^ source_value;
                         self.registers
                             .set_register(dest_register as usize, new_value);
@@ -248,10 +277,8 @@ impl CPU {
                             .registers
                             .get_register(source_register as usize)
                             .unwrap();
-                        let dest_value = self
-                            .registers
-                            .get_register(source_register as usize)
-                            .unwrap();
+                        let dest_value =
+                            self.registers.get_register(dest_register as usize).unwrap();
                         let (new_value, did_overflow) = dest_value.overflowing_add(source_value);
                         self.registers
                             .set_register(dest_register as usize, new_value);
@@ -266,10 +293,8 @@ impl CPU {
                             .registers
                             .get_register(source_register as usize)
                             .unwrap();
-                        let dest_value = self
-                            .registers
-                            .get_register(source_register as usize)
-                            .unwrap();
+                        let dest_value =
+                            self.registers.get_register(dest_register as usize).unwrap();
                         let (new_value, did_borrow) = dest_value.overflowing_sub(source_value);
                         self.registers
                             .set_register(dest_register as usize, new_value);
@@ -299,10 +324,8 @@ impl CPU {
                             .registers
                             .get_register(source_register as usize)
                             .unwrap();
-                        let dest_value = self
-                            .registers
-                            .get_register(source_register as usize)
-                            .unwrap();
+                        let dest_value =
+                            self.registers.get_register(dest_register as usize).unwrap();
                         let (new_value, did_borrow) = source_value.overflowing_sub(dest_value);
                         self.registers
                             .set_register(dest_register as usize, new_value);
@@ -317,7 +340,7 @@ impl CPU {
                             .registers
                             .get_register(source_register as usize)
                             .unwrap();
-                        let did_overflow = source_value & 0x80 == 8;
+                        let did_overflow = source_value >> 7 == 1;
                         let new_value = source_value << 1;
                         self.registers
                             .set_register(dest_register as usize, new_value);
@@ -446,12 +469,14 @@ impl CPU {
                     }
                     0x33 => {
                         let first_digit = register_value / 100;
-                        let second_digit = register_value / 10;
+                        let second_digit = (register_value / 10) % 10;
                         let third_digit = register_value % 10;
                         let base_address = self.registers.get_index();
                         self.memory.set_value(base_address, first_digit);
-                        self.memory.set_value(base_address, second_digit);
-                        self.memory.set_value(base_address, third_digit);
+                        self.memory
+                            .set_value(base_address.wrapping_add(1), second_digit);
+                        self.memory
+                            .set_value(base_address.wrapping_add(2), third_digit);
                     }
                     0x55 => {
                         let base_index = self.registers.get_index();
