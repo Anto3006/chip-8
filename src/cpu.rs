@@ -5,6 +5,8 @@ use crate::display::DisplayChip8;
 use memory::Memory;
 use rand::{self, Rng};
 use registers::Registers;
+use sdl2::audio::AudioCallback;
+use sdl2::audio::AudioSpecDesired;
 use sdl2::event::Event;
 use sdl2::keyboard::Scancode;
 use std::time::Instant;
@@ -61,6 +63,27 @@ pub struct CPU {
     sound_timer: u8,
 }
 
+struct SquareWave {
+    phase_inc: f32,
+    phase: f32,
+    volume: f32,
+}
+
+impl AudioCallback for SquareWave {
+    type Channel = f32;
+    fn callback(&mut self, out: &mut [f32]) {
+        //Generate a square wave
+        for x in out.iter_mut() {
+            *x = if self.phase <= 0.5 {
+                self.volume
+            } else {
+                -self.volume
+            };
+            self.phase = (self.phase + self.phase_inc) % 1.0;
+        }
+    }
+}
+
 impl CPU {
     pub fn new(pixel_size: u32) -> Self {
         Self {
@@ -76,12 +99,31 @@ impl CPU {
 
     pub fn run(&mut self) {
         let sdl_context = self.display.canvas.window().subsystem().sdl();
+        let audio_subsystem = sdl_context.audio().unwrap();
+        let desired_spec = AudioSpecDesired {
+            freq: Some(44100),
+            channels: Some(1), // Mono
+            samples: None,     // default sample size
+        };
+
+        let device = audio_subsystem
+            .open_playback(None, &desired_spec, |spec| {
+                // initialize the audio callback
+                SquareWave {
+                    phase_inc: 440.0 / spec.freq as f32,
+                    phase: 0.0,
+                    volume: 0.1,
+                }
+            })
+            .unwrap();
+
         let mut events = sdl_context.event_pump().unwrap();
         let mut cpu_tick_acc = 0;
         let cpu_ticks_per_second = 700;
         let mut timer_ticks = 0;
         let timer_ticks_per_second = 60;
         let mut delta_time = 0;
+        let mut is_audio_playing = false;
         'gameloop: loop {
             let begin = Instant::now();
             cpu_tick_acc += delta_time;
@@ -93,6 +135,13 @@ impl CPU {
             if timer_ticks > (SEC_TO_NANOS / timer_ticks_per_second) {
                 self.tick_timers();
                 timer_ticks = 0;
+            }
+            if self.sound_timer == 0 {
+                device.pause();
+                is_audio_playing = false;
+            } else if !is_audio_playing {
+                is_audio_playing = true;
+                device.resume();
             }
             let keyboard_state = events.keyboard_state();
             for scancode in SCANCODES_KEYS {
